@@ -2,11 +2,11 @@
 
 Things that look reasonable and then waste an afternoon.
 
-## Secrets in `mcp.json`
+## Secrets in MCP host config
 
-The template contains `"OPENAI_API_KEY": "sk-..."`. Cursor will send whatever you put there to the child process. A real key in a git remote is a rotation event.
+The [README template](../README.md#mcp-registration) contains `"OPENAI_API_KEY": "sk-..."`. The host sends whatever you put in its config (e.g. `~/.cursor/mcp.json` for Cursor) to the child process. A real key in a git remote is a rotation event.
 
-Prefer `env` that inherits from the shell Cursor was launched from, or a local untracked override. Never commit a live key.
+Prefer `env` that inherits from the shell the host was launched from, or a local untracked override. Never commit a live key.
 
 ## `MEM0_BASE_URL=http://localhost:8888` with `mem0-cli`
 
@@ -14,9 +14,9 @@ The env var exists. It retargets the **Platform** HTTP client. OSS REST is `POST
 
 mem0-lite does not speak that CLI. Use MCP tools or the SDK.
 
-## Embedding `Memory()` in “the Cursor agent”
+## Embedding `Memory()` in the agent loop
 
-There is no user-controlled long-lived Python VM inside the agent loop. Option A from the SDK docs is for *your* process. In Cursor, the analogue is this MCP server (or shell+curl to a daemon).
+There is no user-controlled long-lived Python VM inside the agent loop. Option A from the SDK docs is for *your* process. For a hosted agent, the analogue is this MCP server (or shell+curl to a daemon).
 
 ## CLI or `uv run` per tool call
 
@@ -29,9 +29,13 @@ That re-imports `mem0ai`, reopens Qdrant, and often re-inits embeddings on every
 
 ## Default Qdrant path of `/tmp/qdrant`
 
-Upstream `Memory()` defaults there. `/tmp` is wiped on reboot on many Macs. This wrapper sets `~/.mem0-lite/qdrant` with `on_disk=True`. If you construct `Memory()` yourself in a scratch script, you will not get that path.
+Upstream `Memory()` defaults there. `/tmp` is wiped on reboot on many Macs. This wrapper sets `~/.mem0/qdrant` with `on_disk=True`. If you construct `Memory()` yourself in a scratch script, you will not get that path.
 
-History still defaults to `~/.mem0/history.db` (mem0ai), which is a different directory than the vectors. Back up both if you care.
+Everything lives under `~/.mem0/` (`qdrant/`, `history.db`, `config.json`, `lite.lock`, `lite.want`). Back up that directory if you care. If you had data in the old `~/.mem0-lite/` path, move `qdrant/` into `~/.mem0/`.
+
+## Two MCP processes, same `MEM0_DIR`
+
+Embedded Qdrant cannot share a folder. The holder keeps it open; a waiter writes `lite.want` and blocks on `lite.lock` until the holder yields ([D10](decisions.md#d10--keep-open-embedded-qdrant--cooperative-yield-no-store-daemon)). Timeout → `{"error": "store_busy"}`. Long `infer=true` holds the lock for the LLM call. Do not start a Qdrant/mem0 daemon to “fix” this.
 
 ## `search(..., user_id="x")` instead of `filters=`
 
@@ -51,7 +55,7 @@ Vector search matches stored facts (“User prefers pnpm in TypeScript packages�
 
 ## Assuming MCP is running when tools are missing
 
-If `uv` is not on the PATH Cursor sees (GUI apps on macOS often have a thin PATH), the server never starts. Launch Cursor from a terminal once, or use an absolute path to `uv`.
+If `uv` is not on the PATH the host sees (GUI apps on macOS often have a thin PATH), the server never starts. Launch the host from a terminal once, or use an absolute path to `uv`.
 
 First tool call pays for `Memory.from_config` (imports, Qdrant, possibly model checks). Subsequent calls in the same session are cheap. Do not benchmark the first search.
 

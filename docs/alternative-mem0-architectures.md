@@ -17,14 +17,14 @@ flowchart TB
 
   PySDK[Python / Node app]
   OfficialCLI[mem0-cli]
-  Cursor[Cursor agent]
+  MCPClient[MCP host / agent]
   OtherHTTP[curl / Go / any HTTP]
 
   PySDK --> SDK
   PySDK --> Plat
   OfficialCLI --> Plat
-  Cursor --> PlatMCP
-  Cursor --> Lite
+  MCPClient --> PlatMCP
+  MCPClient --> Lite
   OtherHTTP --> REST
   OtherHTTP --> Plat
   REST --> SDK
@@ -37,8 +37,8 @@ flowchart TB
 | | Platform | OSS REST (`server/`) | OSS SDK in-process | mem0-lite |
 |---|---|---|---|---|
 | Data location | Mem0 cloud | Your Postgres | Local Qdrant/SQLite | Local Qdrant/SQLite |
-| Always-on cost | None local | Docker VM + Postgres, or uvicorn + Postgres | None | MCP sidecar while Cursor is open |
-| Cursor native? | Yes (hosted MCP) | No (shell + curl) | No | Yes (stdio MCP) |
+| Always-on cost | None local | Docker VM + Postgres, or uvicorn + Postgres | None | MCP sidecar while the host is open |
+| stdio MCP? | Yes (hosted MCP) | No (shell + curl) | No | Yes (stdio MCP) |
 | Agent hot path | HTTP to cloud | HTTP to localhost | Direct calls | MCP → in-process `Memory()` |
 | Auth | API key / OAuth | JWT / `X-API-Key` | None | None |
 | Dashboard | Yes | Yes | No | No |
@@ -49,13 +49,13 @@ flowchart TB
 
 **Use when** you want zero local infra and are fine with memory off-box.
 
-Cursor config points at `https://mcp.mem0.ai/mcp/` with `Authorization: Token …`. Official `mem0-cli` talks to `api.mem0.ai` (`/v3/memories/add/`, `Authorization: Token`). That CLI is a Platform client even if you set `MEM0_BASE_URL`.
+Hosted MCP config points at `https://mcp.mem0.ai/mcp/` with `Authorization: Token …`. Official `mem0-cli` talks to `api.mem0.ai` (`/v3/memories/add/`, `Authorization: Token`). That CLI is a Platform client even if you set `MEM0_BASE_URL`.
 
 **Do not** point `MEM0_BASE_URL` at the OSS server and expect it to work. OSS exposes `POST /memories` and `X-API-Key`. Different contract.
 
 ## OSS REST server
 
-**Use when** several languages or services need one HTTP API, you want the dashboard, or Cursor is not the only client.
+**Use when** several languages or services need one HTTP API, you want the dashboard, or the MCP host is not the only client.
 
 Compose runs FastAPI, pgvector, and a Next dashboard. Auth is on by default. This is a real service: migrations, JWT, API keys, request log.
 
@@ -73,17 +73,17 @@ memory.add(...)
 memory.search(..., filters={"user_id": "..."})
 ```
 
-This is the lowest overhead *if* you already have a long-lived interpreter. Cursor’s agent is not that interpreter. Embedding `Memory()` “in the Cursor agent” is not an available API.
+This is the lowest overhead *if* you already have a long-lived interpreter. A hosted coding agent is not that interpreter. Embedding `Memory()` inside the agent loop is not an available API.
 
 A Python CLI that constructs `Memory()` on every `uv run` / shebang invoke is this architecture with the worst lifecycle: import tax on every add.
 
 ## mem0-lite (this repo)
 
-**Use when** the primary client is Cursor (or another MCP host), you want OSS data on disk, and you refuse Docker.
+**Use when** the primary client is an MCP host, you want OSS data on disk, and you refuse Docker. Setup: [README Install](../README.md#install).
 
 MCP is not “better than REST.” It is the protocol the host already multiplexes. The server is a thin FastMCP façade over the same `Memory()` you would embed in a Python agent.
 
-If you later need HTTP for non-Cursor clients, add a REST daemon and keep this MCP server as an adapter — or drop MCP and accept shell+curl from Cursor. Do not run both without a reason.
+If you later need HTTP for non-MCP clients, add a REST daemon and keep this MCP server as an adapter — or drop MCP and accept shell+curl from the host. Do not run both without a reason.
 
 ## Official CLIs
 
@@ -96,7 +96,7 @@ Treat them as human/ops tools against `api.mem0.ai`, not as the agent memory pla
 ```mermaid
 flowchart TD
   Q1{Memory must stay on this machine?}
-  Q2{Primary client is Cursor?}
+  Q2{Primary client speaks MCP?}
   Q3{Need HTTP for other services?}
   Q4{Agent runtime is Python/Node you own?}
 

@@ -38,11 +38,11 @@ flowchart LR
 
 **Weaknesses:** Unbounded growth pollutes the system prompt. No semantic retrieval. Humans (or agents) must edit by hand. Conflicts are merge conflicts, which is a feature and a chore.
 
-**Use when** the corpus is small and normative: “never force-push main,” “pnpm only.” mem0-lite’s attach snippet is this layer for *policy*; Mem0 is for *volume* that should not occupy the prompt.
+**Use when** the corpus is small and normative: “never force-push main,” “pnpm only.” mem0-lite’s [AGENTS.md pointer](../README.md#thin-agentsmd) is this layer for *when* to recall/capture; Mem0 is for *volume* that should not occupy the prompt.
 
 ## 2. Thread / project memory files
 
-Example: Cursor `thread-memory` under `.agents/memories/` — glossary plus per-thread files with settled decisions, rejected options, footguns.
+Example: thread-memory skills (e.g. under `.agents/memories/`) — glossary plus per-thread files with settled decisions, rejected options, footguns.
 
 **Strengths:** Scoped to a repo and a thread. Survives model swaps. Easy to grep. No embedding pipeline.
 
@@ -66,7 +66,7 @@ mem0ai defaults to local Qdrant + SQLite history. Embeddings from OpenAI (or Oll
 
 **Strengths:** Paraphrase recall. Agent-shaped API. Extraction can collapse a transcript into facts (`infer=true`) or store verbatim (`infer=false`).
 
-**Weaknesses:** Write path often calls an LLM (unless `infer=false` *and* you still pay for embeddings). Index format is not a git-friendly artifact. Changing embedder invalidates the collection unless you re-index. History DB path (`~/.mem0/history.db`) is separate from the Qdrant dir unless you configure both.
+**Weaknesses:** Write path often calls an LLM (unless `infer=false` *and* you still pay for embeddings). Index format is not a git-friendly artifact. Changing embedder invalidates the collection unless you re-index.
 
 **Use when** you want semantic recall of many small facts across sessions, on one machine.
 

@@ -811,18 +811,20 @@ wheels = [
 ]
 
 [[package]]
-name = "mem0-lite-mcp"
+name = "mem0-lite"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "mcp", extra = ["cli"] },
     { name = "mem0ai" },
+    { name = "portalocker" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "mcp", extras = ["cli"], specifier = ">=1.9,<2" },
     { name = "mem0ai", specifier = ">=1.0" },
+    { name = "portalocker", specifier = ">=2.8" },
 ]
 
 [[package]]
