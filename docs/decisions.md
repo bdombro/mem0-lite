@@ -40,7 +40,7 @@ Recorded so the next pass does not re-litigate them without new constraints.
 
 **Why:** MCP schemas already load with the tools. A skill that restates them is duplicate context. Tool docs never say “search at task start”; that *when* belongs in standing instructions. A skill is worse at always-on policy (description match / opt-in).
 
-**Revisit when:** you want server-side secret scanning. That is worth code, not a prompt.
+**Revisit when:** you want server-side secret scanning. That is worth code, not a prompt. Default recall is partly server-side when `project` is known (explicit or via a plugin/`cwd`) — that does not move *when to search* into the server.
 
 ## D6 — Types as `metadata.type`, not Mem0 `memory_type`
 
@@ -80,6 +80,22 @@ Official sharing is a Qdrant server (or mem0 REST) that many clients talk to. We
 
 **Revisit when:** you need concurrent readers (run Qdrant as a server), or a non-MCP client (HTTP in front of the same singleton — D1). Yield wedges waiters.
 
+## D11 — Bundled git is an allowlisted probe, not a shell
+
+**Choice:** The shipped git plugin runs a frozen argv list via `subprocess` (no `shell=True`, no user argv). Hot path (~2s) is local only: toplevel, origin, branch, status, default-branch verify. `git fetch`, `gh`, and auto-promote are env-gated and default off (`MEM0_LITE_GIT_FETCH`, `MEM0_LITE_GIT_GH`, `MEM0_LITE_GIT_PROMOTE`). Prompts disabled (`GIT_TERMINAL_PROMPT=0`, `GH_PROMPT_DISABLED=1`). Auth failures are skipped, not retried. Official plugin never persists git/gh/status output as memories and never allowlists `git diff` or writes besides fetch updating remote-tracking refs.
+
+**Why:** Agents forget to pass `project`. A checkout is a high-signal stamp for coding workflows. Network and store mutation on the search path are the sharp edges; they stay opt-in. `follow_up` plus `update_memory` is the default promote path.
+
+**Revisit when:** a second bundled probe needs the same confinement helpers.
+
+## D12 — Plugins are operator code, not a sandbox
+
+**Choice:** Auto-load `ContextPlugin` classes only from `$MEM0_DIR/plugins/<name>/` (default `~/.mem0/plugins/<name>/` when that tree exists). Bundled implementations ship in repo `plugins/<name>/`; `just setup` symlinks them into the data dir. Each plugin is a subdirectory with `plugin.py` or `__init__.py`; loose files at the plugins root are ignored. `MEM0_LITE_PLUGINS_DISABLE` skips by name. Broken imports are logged and skipped. Never auto-load from the agent workspace / `cwd`. No capability flags. Core runner does I/O outside `memory_session()` and writes inside (D10); plugins may ignore that. This slice does not register extra MCP tools from plugins.
+
+**Why:** A Python file in this process can already do anything the process can do. Pretending otherwise needs a jail this repo will not grow. Operator-installed files are chosen; workspace files are whoever opened the folder (prompt injection). Document footguns instead of a marketplace.
+
+**Revisit when:** a plugin needs its own MCP tool, or we want a strict env that fails MCP startup on import errors.
+
 ```mermaid
 flowchart LR
   subgraph decided [Locked unless constraints change]
@@ -89,5 +105,7 @@ flowchart LR
     D4[Embedded Qdrant]
     D5[Thin AGENTS.md + tool docs]
     D10[keep-open + yield, no daemon]
+    D11[bundled git allowlist]
+    D12[plugins not sandbox]
   end
 ```

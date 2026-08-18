@@ -75,6 +75,54 @@ The tool no-ops unless `confirm=true`. If the model keeps retrying, check the JS
 
 `list_memories` is recency/filter dump. Semantic questions go through `search_memories`. Mixing them in the attach protocol produces either token blowups or misses.
 
+## `cwd` outside git roots
+
+If `MEM0_LITE_GIT_ROOTS` is set, the git toplevel must sit under one of those paths. `cwd=/` is refused. Search still runs without inferred project filters (`warning` + `follow_up`). Add writes untagged (or with explicit tags) and does not invent `project` from a local path.
+
+## Agent `cwd` in `shell=True`
+
+Plugins that interpolate `cwd` into a shell are a confused deputy. The bundled git plugin uses argv lists only. Do not copy `os.system(f"git -C {cwd} …")`.
+
+## Auto-loading plugins from the workspace
+
+Only `$MEM0_DIR/plugins/<name>/` (default `~/.mem0/plugins/<name>/`) is scanned. Bundled source in the repo checkout is not auto-loaded until linked there (`just setup`). A plugin dir in the workspace the agent opened is not loaded from `cwd`. Loading that would execute whoever owns the checkout.
+
+## Git fetch / gh hanging on auth
+
+Background git/`gh` set `GIT_TERMINAL_PROMPT=0` and `GH_PROMPT_DISABLED=1`. If a custom plugin omits those, a 401 waits on a TTY the MCP does not have. Auth → skip, no retry.
+
+## `update_memory` text-only leaving stale `scope`
+
+Promotion is a metadata patch (`scope: standing`). Text-only update leaves `wip` in place. Pass `metadata_json`.
+
+## Holding `lite.lock` across plugin network I/O
+
+The core runner runs plugin I/O outside `memory_session()`. A plugin that opens the store itself and then `git fetch` wedges other MCP processes on that `MEM0_DIR` ([D10](decisions.md#d10--keep-open-embedded-qdrant--cooperative-yield-no-store-daemon)).
+
+## Import-on-start side effects
+
+Plugin modules are imported when first loaded. A plugin that talks to the network or the store at import time delays or breaks MCP startup. Keep import side-effect free. A broken import is skipped (logged), not a process crash.
+
+## Dumping git status into the store
+
+The official git plugin never `add_memory` from probe output. A custom plugin can; that is noise you then have to delete.
+
+## Disabling git and expecting `cwd` to stamp tags
+
+`MEM0_LITE_PLUGINS_DISABLE=git` (or a missing git binary) means `cwd` is ignored for stamping. Pass `project` / `workstream` explicitly.
+
+## Optional tagged-store wipe
+
+New filters do not migrate old payloads. Untagged memories remain valid and show up only in unfiltered search. If you want every record tagged, stop MCP hosts then:
+
+```bash
+just wipe
+# or: rm -rf ~/.mem0
+# or: rm -rf "$MEM0_DIR"
+```
+
+That directory is Qdrant, `history.db`, locks, and logs. Not done automatically. `just wipe` asks to confirm.
+
 ```mermaid
 flowchart TD
   A[Memory bug]
@@ -85,5 +133,5 @@ flowchart TD
   D -->|no| F{Slow every call?}
   F -->|yes| G[Spawning Python per invoke]
   F -->|no| H{Garbage hits?}
-  H --> I[Query rewrite / embedder change / infer]
+  H --> I[Query rewrite / embedder change / infer / untagged vs project filter]
 ```

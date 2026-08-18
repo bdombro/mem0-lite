@@ -25,17 +25,31 @@ mem0-lite is a *lite*weight local Python app that exposes the OSS mem0 library a
 - **When to use them** — thin [AGENTS.md pointer](#agentsmd)
 - **MCP registration** — [uv launch snippet](#mcp-registration)
 
+
+
 ### What it stores
 
 vector db, history, config, access log, `lite.lock`, and `lite.want` in `~/.mem0`
 
 ## Install
 
-Requires [uv](https://docs.astral.sh/uv/), Python 3.11+, and `OPENAI_API_KEY` (or Ollama — see [architecture](docs/architecture.md)).
+Requires Python 3.11+, `OPENAI_API_KEY` (or Ollama — see [architecture](docs/architecture.md)), and `just` for the recipes below. `just setup` installs [uv](https://docs.astral.sh/uv/) if it is missing.
 
 1. Clone this repo.
-2. Register the MCP server with your host ([snippet below](#mcp-registration)). Set `OPENAI_API_KEY` in the host config or your environment; do not commit it.
-3. Paste the [AGENTS.md pointer](#agentsmd).
+2. `just setup` — installs uv when needed, `uv sync --group dev`, and symlinks bundled plugins into `~/.mem0/plugins/`.
+3. Register the MCP server with your host ([snippet below](#mcp-registration)). Set `OPENAI_API_KEY` in the host config or your environment; do not commit it.
+4. Paste the [AGENTS.md pointer](#agentsmd).
+
+Common commands:
+
+```bash
+just setup    # install uv if needed, uv sync, link plugins into ~/.mem0/plugins
+just test     # pytest
+just run      # mem0-lite mcp (stdio)
+just wipe     # delete ~/.mem0 or $MEM0_DIR — stop MCP hosts first
+```
+
+
 
 ### Env
 
@@ -50,8 +64,13 @@ The MCP reads these from the process environment. If a variable is set in your s
 - `MEM0_LITE_LLM_MODEL` — LLM model name (default `llama3.2` with Ollama)
 - `MEM0_LITE_EMBEDDER_PROVIDER` — e.g. `openai` or `ollama`
 - `MEM0_LITE_EMBEDDER_MODEL` — embedder model (default `nomic-embed-text` with Ollama)
+- `MEM0_LITE_PLUGINS_DISABLE` — comma-separated plugin names to skip (e.g. `git`)
+- `MEM0_LITE_GIT_ROOTS` — pathsep-separated allowlist for git toplevels
+- `MEM0_LITE_GIT_FETCH` / `MEM0_LITE_GIT_GH` / `MEM0_LITE_GIT_PROMOTE` — background git (all default off)
 
 Full defaults: [architecture](docs/architecture.md). Opt-in rating: [Feedback mode](#feedback-mode) (`MEM0_LITE_FEEDBACK_MODE`, default off).
+
+Plugins: source in repo `plugins/<name>/` (entry: `plugin.py` or `__init__.py`). Runtime loads only from `$MEM0_DIR/plugins/<name>/` (default `~/.mem0/plugins/`). `just setup` symlinks bundled plugins there. That is code in the MCP process ([D12](docs/decisions.md#d12--plugins-are-operator-code-not-a-sandbox)). Not loaded from the agent workspace.
 
 ### MCP registration
 
@@ -69,6 +88,8 @@ Merge into your MCP host's config. Cursor: `~/.cursor/mcp.json` or project `.cur
 }
 ```
 
+
+
 ### AGENTS.md
 
 Paste into `AGENTS.md` (or user rules). How to call tools is in the MCP schemas. This is *when*.
@@ -76,8 +97,10 @@ Paste into `AGENTS.md` (or user rules). How to call tools is in the MCP schemas.
 ```md
 ## Memory
 
-MCP `mem0-lite` is registered. Search at task start, context switch, or when the user references past work. After the reply, write only if a new agent would benefit in days/weeks (future utility, novelty, factual, no secrets). Do not announce recall. Prefer `update_memory`. Most turns write nothing.
+MCP `mem0-lite` is registered. Search at task start, context switch, or when the user references past work. Pass `cwd` when in a checkout (or `project` / `workstream` if already known). After the reply, write only if a new agent would benefit in days/weeks (future utility, novelty, factual, no secrets). Do not announce recall, misses, or “memories didn’t help” — just continue. Prefer `update_memory`. Most turns write nothing.
 ```
+
+
 
 ## Metrics
 
@@ -86,6 +109,8 @@ Every tool call appends one line to `~/.mem0/access-log.jsonl` (tool, agent, con
 ```bash
 uv run python scripts/access-report.py
 ```
+
+
 
 ## Feedback mode
 
@@ -104,7 +129,6 @@ Enable in the MCP host `env` block (do not put this in the default registration 
 
 ```json
 "env": {
-  "OPENAI_API_KEY": "sk-...",
   "MEM0_LITE_FEEDBACK_MODE": "1"
 }
 ```
@@ -125,8 +149,10 @@ After a retrieval call, if you used a hit, clearly missed a fact, or got noise, 
 | [Architecture](docs/architecture.md)                                     | Process model, tools, data layout                      |
 | [Alternative Mem0 architectures](docs/alternative-mem0-architectures.md) | Platform, Docker REST, SDK-in-process, this repo       |
 | [Alternative storage](docs/alternative-memory-storage.md)                | Files, SQLite, vector DBs, hosted memory               |
-| [Decisions](docs/decisions.md)                                           | Why MCP, why `infer=false`, why not REST               |
-| [Footguns](docs/footguns.md)                                             | Keys in git, `/tmp` Qdrant, CLI-as-tool, query rewrite |
+| [Decisions](docs/decisions.md)                                           | Why MCP, why `infer=false`, why not REST, D11 git, D12 plugins |
+| [Footguns](docs/footguns.md)                                             | Keys in git, `/tmp` Qdrant, CLI-as-tool, query rewrite, plugins |
+
+
 
 
 ## Not this repo

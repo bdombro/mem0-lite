@@ -11,6 +11,7 @@ from typing import Any, Literal
 from mcp.server.fastmcp import FastMCP
 
 from mem0_lite.access_log import log_tool_call
+from mem0_lite.context import envelope, gather_context, kick_reconcile, pick_follow_up, recall_extra
 from mem0_lite.core import (
     StoreBusy,
     clear_session_metrics,
@@ -22,6 +23,7 @@ from mem0_lite.core import (
     memory_session,
 )
 from mem0_lite.feedback_log import FEEDBACK_REASONS, log_feedback
+from mem0_lite.scope import normalize_scope
 
 FeedbackReason = Literal["used", "empty_ok", "miss", "noise", "stale", "bad_query"]
 
@@ -99,6 +101,16 @@ def _run_tool(
         )
 
 
+def _parse_metadata_json(metadata_json: str | None) -> dict[str, Any]:
+    """Parse metadata_json into a dict; empty if unset."""
+    if not metadata_json:
+        return {}
+    parsed = json.loads(metadata_json)
+    if not isinstance(parsed, dict):
+        raise ValueError("metadata_json must be a JSON object")
+    return parsed
+
+
 @mcp.tool()
 def add_memory(
     text: str,
@@ -107,24 +119,42 @@ def add_memory(
     memory_type: str | None = None,
     infer: bool = False,
     metadata_json: str | None = None,
+    project: str | None = None,
+    repo: str | None = None,
+    workstream: str | None = None,
+    source_ref: str | None = None,
+    scope: str | None = None,
+    cwd: str | None = None,
 ) -> str:
     """Store a memory. Prefer infer=false with a self-contained third-person fact.
 
     memory_type: decision | convention | anti_pattern | user_preference | task_learning | environmental | identity | rule | project
+    Optional project (repo is an alias), workstream, source_ref, scope (standing|wip|historical), cwd.
+    Explicit tags win. If cwd is set and tags are omitted, plugins may stamp them (bundled git).
+    Probe failure: warning, write proceeds untagged or with explicit tags. Do not invent project from a path.
     infer=true lets mem0 extract facts from raw conversation; skip for explicit facts.
     Never store secrets. Skip small talk, tool dumps, and one-shot commands.
     """
     uid, aid = _scope(user_id, agent_id)
-    metadata: dict[str, Any] = {}
-    if metadata_json:
-        parsed = json.loads(metadata_json)
-        if not isinstance(parsed, dict):
-            raise ValueError("metadata_json must be a JSON object")
-        metadata = parsed
-    if memory_type:
-        metadata["type"] = memory_type
+    if scope and scope.strip() and normalize_scope(scope) is None:
+        return dump({"error": "invalid_scope", "hint": "standing | wip | historical"})
 
     def work() -> str:
+        metadata = _parse_metadata_json(metadata_json)
+        if memory_type:
+            metadata["type"] = memory_type
+        tags, _, _, warning = gather_context(
+            tool="add_memory",
+            user_id=uid,
+            agent_id=aid,
+            cwd=cwd,
+            project=project,
+            repo=repo,
+            workstream=workstream,
+            source_ref=source_ref,
+            scope=scope,
+        )
+        metadata.update(tags)
         try:
             with memory_session() as memory:
                 result = memory.add(
@@ -136,9 +166,23 @@ def add_memory(
                 )
         except StoreBusy as exc:
             return _store_busy_payload(exc)
+        if warning and isinstance(result, dict):
+            result = dict(result)
+            result["warning"] = warning
         return dump(result)
 
-    return _run_tool("add_memory", aid, work)
+    return _run_tool(
+        "add_memory",
+        aid,
+        work,
+        params=_log_params(
+            memory_type=memory_type,
+            project=project or repo,
+            workstream=workstream,
+            scope=scope,
+            cwd=cwd,
+        ),
+    )
 
 
 @mcp.tool()
@@ -148,33 +192,59 @@ def search_memories(
     agent_id: str | None = None,
     memory_type: str | None = None,
     top_k: int = 10,
+    project: str | None = None,
+    repo: str | None = None,
+    workstream: str | None = None,
+    scope: str | None = None,
+    cwd: str | None = None,
 ) -> str:
     """Semantic search. Rewrite the query to 3-6 keywords matching stored third-person facts.
 
     Do not pass the user's raw message. Drop pronouns and question words.
     When useful, run 2-4 parallel searches with memory_type: decision, convention, anti_pattern, or omit for catch-all.
+    Pass cwd when in a checkout, or project/workstream if already known. repo is an alias for project.
+    If those filters are omitted and project is known, default recall is standing+project OR current wip workstream.
     When MEM0_LITE_FEEDBACK_MODE is enabled, responses include ts; rate useful/miss/noise via rate_memory_call.
     """
     uid, aid = _scope(user_id, agent_id)
-    extra = {"type": memory_type} if memory_type else None
 
     def work() -> str:
+        extra, _, pairs, warning = recall_extra(
+            user_id=uid,
+            agent_id=aid,
+            cwd=cwd,
+            project=project,
+            repo=repo,
+            workstream=workstream,
+            scope=scope,
+            memory_type=memory_type,
+        )
         try:
             with memory_session() as memory:
                 result = memory.search(
                     query,
-                    filters=_filters(user_id, agent_id, extra),
+                    filters=_filters(user_id, agent_id, extra or None),
                     top_k=top_k,
                 )
         except StoreBusy as exc:
             return _store_busy_payload(exc)
-        return dump(result)
+        follow_up = pick_follow_up(pairs, result, warning)
+        kick_reconcile(pairs, user_id=uid, agent_id=aid)
+        return dump(envelope(result, warning=warning, follow_up=follow_up))
 
     return _run_tool(
         "search_memories",
         aid,
         work,
-        params=_log_params(query=query, memory_type=memory_type, top_k=top_k),
+        params=_log_params(
+            query=query,
+            memory_type=memory_type,
+            top_k=top_k,
+            project=project or repo,
+            workstream=workstream,
+            scope=scope,
+            cwd=cwd,
+        ),
     )
 
 
@@ -202,38 +272,78 @@ def list_memories(
     agent_id: str | None = None,
     memory_type: str | None = None,
     top_k: int = 50,
+    project: str | None = None,
+    repo: str | None = None,
+    workstream: str | None = None,
+    scope: str | None = None,
+    cwd: str | None = None,
 ) -> str:
     """List memories in scope. Not a substitute for search_memories.
+
+    Optional project (repo alias), workstream, scope, cwd — same default recall as search_memories.
     When MEM0_LITE_FEEDBACK_MODE is enabled, responses include ts; rate useful/miss/noise via rate_memory_call.
     """
     uid, aid = _scope(user_id, agent_id)
-    extra = {"type": memory_type} if memory_type else None
 
     def work() -> str:
+        extra, _, pairs, warning = recall_extra(
+            user_id=uid,
+            agent_id=aid,
+            cwd=cwd,
+            project=project,
+            repo=repo,
+            workstream=workstream,
+            scope=scope,
+            memory_type=memory_type,
+        )
         try:
             with memory_session() as memory:
-                result = memory.get_all(filters=_filters(user_id, agent_id, extra), top_k=top_k)
+                result = memory.get_all(filters=_filters(user_id, agent_id, extra or None), top_k=top_k)
         except StoreBusy as exc:
             return _store_busy_payload(exc)
-        return dump(result)
+        follow_up = pick_follow_up(pairs, result, warning)
+        kick_reconcile(pairs, user_id=uid, agent_id=aid)
+        return dump(envelope(result, warning=warning, follow_up=follow_up))
 
     return _run_tool(
         "list_memories",
         aid,
         work,
-        params=_log_params(memory_type=memory_type, top_k=top_k),
+        params=_log_params(
+            memory_type=memory_type,
+            top_k=top_k,
+            project=project or repo,
+            workstream=workstream,
+            scope=scope,
+            cwd=cwd,
+        ),
     )
 
 
 @mcp.tool()
-def update_memory(memory_id: str, text: str) -> str:
-    """Replace memory text in place. Prefer this over delete+add when a fact changed."""
+def update_memory(
+    memory_id: str,
+    text: str | None = None,
+    metadata_json: str | None = None,
+) -> str:
+    """Replace memory text and/or metadata in place. Prefer this over delete+add.
+
+    Pass metadata_json to patch tags (e.g. scope standing|wip|historical). Text may be omitted when only metadata changes.
+    """
     uid, aid = _scope(None, None)
+    metadata = _parse_metadata_json(metadata_json) if metadata_json else None
+    if text is None and not metadata:
+        return dump({"error": "text_or_metadata_required"})
 
     def work() -> str:
         try:
             with memory_session() as memory:
-                result = memory.update(memory_id, text=text)
+                kwargs: dict[str, Any] = {}
+                if text is not None:
+                    kwargs["text"] = text
+                if metadata:
+                    kwargs["metadata"] = metadata
+                result = memory.update(memory_id, **kwargs)
         except StoreBusy as exc:
             return _store_busy_payload(exc)
         return dump(result)

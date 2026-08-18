@@ -91,10 +91,15 @@ def default_agent_id() -> str | None:
     return os.environ.get("MEM0_LITE_AGENT_ID") or None
 
 
+def env_flag(name: str) -> bool:
+    """True when an env var is a truthy flag (1/true/yes/on)."""
+    raw = os.environ.get(name, "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 def feedback_mode() -> bool:
     """True when MEM0_LITE_FEEDBACK_MODE adds ts to tool responses for agent rating."""
-    raw = os.environ.get("MEM0_LITE_FEEDBACK_MODE", "").strip().lower()
-    return raw in ("1", "true", "yes", "on")
+    return env_flag("MEM0_LITE_FEEDBACK_MODE")
 
 
 def _lock_timeout() -> float:
