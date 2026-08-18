@@ -9,6 +9,7 @@ import os
 import threading
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -34,6 +35,29 @@ _watcher_stop = threading.Event()
 _WANT_POLL_S = 0.05
 # Max slice when blocking on lite.lock; waiter refreshes lite.want each slice.
 _WANT_REFRESH_S = 0.1
+
+
+@dataclass
+class SessionMetrics:
+    """Store open/reuse and lite.lock wait for the last memory_session()."""
+
+    reused_connection: bool = False
+    lock_wait_ms: float = 0.0
+
+
+# Metrics from the most recent memory_session() in this process.
+_session_metrics: SessionMetrics | None = None
+
+
+def last_session_metrics() -> SessionMetrics | None:
+    """Metrics from the last memory_session(); None if that call did not open the store."""
+    return _session_metrics
+
+
+def clear_session_metrics() -> None:
+    """Reset session metrics before a tool call that may not use memory_session()."""
+    global _session_metrics
+    _session_metrics = None
 
 
 class StoreBusy(RuntimeError):
@@ -65,6 +89,12 @@ def default_user_id() -> str:
 def default_agent_id() -> str | None:
     """Optional mem0 agent scope from env; None means no agent filter."""
     return os.environ.get("MEM0_LITE_AGENT_ID") or None
+
+
+def feedback_mode() -> bool:
+    """True when MEM0_LITE_FEEDBACK_MODE adds ts to tool responses for agent rating."""
+    raw = os.environ.get("MEM0_LITE_FEEDBACK_MODE", "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
 
 
 def _lock_timeout() -> float:
@@ -306,10 +336,12 @@ def _ensure_watcher() -> None:
     thread.start()
 
 
-def _become_holder(timeout: float, deadline: float) -> None:
+def _become_holder(timeout: float, deadline: float, metrics: SessionMetrics) -> None:
     """Acquire lite.lock, open Memory(), and start the idle watcher."""
     global _memory, _portalock, _generation
+    lock_start = time.perf_counter()
     lock = _acquire_lite_lock(timeout, deadline)
+    metrics.lock_wait_ms = (time.perf_counter() - lock_start) * 1000
     try:
         memory = _open_memory()
     except BaseException:
@@ -335,12 +367,20 @@ def _reset_holder() -> None:
 @contextmanager
 def memory_session() -> Iterator[Memory]:
     """Reuse open Memory() across calls; yield to other processes when lite.want appears."""
-    global _in_use
+    global _in_use, _session_metrics
+    metrics = SessionMetrics()
     timeout = _lock_timeout()
     deadline = time.monotonic() + timeout
     with _thread_lock:
         if _memory is None:
-            _become_holder(timeout, deadline)
+            metrics.reused_connection = False
+            try:
+                _become_holder(timeout, deadline, metrics)
+            except StoreBusy:
+                _session_metrics = metrics
+                raise
+        else:
+            metrics.reused_connection = True
         gen = _generation
         _in_use += 1
         try:
@@ -350,6 +390,7 @@ def memory_session() -> Iterator[Memory]:
             _in_use -= 1
             if _in_use == 0 and _generation == gen:
                 _maybe_yield_locked()
+            _session_metrics = metrics
 
 
 # Release Qdrant on exit so a sibling process is not stuck after crash/kill.

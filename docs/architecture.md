@@ -71,12 +71,13 @@ mem0-lite/
 | Piece | Default | Override |
 |---|---|---|
 | Transport | stdio | none (primary path) |
-| Data dir | `~/.mem0/` — `qdrant/`, `history.db`, `config.json`, `lite.lock`, `lite.want` | `MEM0_DIR` |
+| Data dir | `~/.mem0/` — `qdrant/`, `history.db`, `config.json`, `lite.lock`, `lite.want`, `access-log.jsonl`, `feedback.jsonl` | `MEM0_DIR` |
 | Store lock | holder keeps Qdrant + `lite.lock`; waiter writes `lite.want` then blocks | `MEM0_LITE_LOCK_TIMEOUT` (seconds, default 30) |
 | LLM | OpenAI `gpt-5-mini` via mem0ai defaults | `MEM0_LITE_LLM_PROVIDER` / `MEM0_LITE_LLM_MODEL` |
 | Embedder | OpenAI `text-embedding-3-small` | `MEM0_LITE_EMBEDDER_PROVIDER` / `MEM0_LITE_EMBEDDER_MODEL` |
 | User scope | `$MEM0_LITE_USER_ID` or `$USER` | tool arg `user_id` |
 | Agent scope | `$MEM0_LITE_AGENT_ID` if set | tool arg `agent_id` |
+| Feedback mode | off (no `ts` on responses) | `MEM0_LITE_FEEDBACK_MODE=1` adds `ts` for `rate_memory_call` |
 
 The holder keeps `Memory()` open and holds `lite.lock`. Another MCP on the same `MEM0_DIR` writes `lite.want`; the holder yields after the current op (or while idle). Embedded Qdrant cannot share a folder (`qdrant/.lock` for the client lifetime). We do not run a Qdrant/mem0 daemon for that sharing — Cursor already keeps this sidecar alive ([D10](decisions.md#d10--keep-open-embedded-qdrant--cooperative-yield-no-store-daemon)). Timeout returns `{"error": "store_busy"}`.
 
@@ -93,12 +94,13 @@ OSS `Memory()`, not the Platform HTTP surface. Paths like `/v3/memories/add/` do
 | `update_memory` | `update(id, text=…)` | prefer over delete+add |
 | `delete_memory` | `delete(id)` | |
 | `delete_all_memories` | `delete_all(...)` | requires `confirm=true` |
+| `rate_memory_call` | append `feedback.jsonl` | rates a prior retrieval by `call_ts`; no store access |
 
 `search` / `get_all` take filters as a dict (`user_id`, optional `agent_id`, optional `type`). They reject top-level `user_id=` kwargs; the wrapper maps that correctly.
 
 ## Protocol vs runtime
 
-The server stores and retrieves. It does not decide *when* to remember. That lives in a thin [AGENTS.md pointer](../README.md#thin-agentsmd). *How* (query rewrite, `infer=false`, types) lives on the tool docstrings.
+The server stores and retrieves. It does not decide *when* to remember. That lives in a thin [AGENTS.md pointer](../README.md#agentsmd). *How* (query rewrite, `infer=false`, types) lives on the tool docstrings.
 
 ```mermaid
 flowchart TD

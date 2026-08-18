@@ -38,7 +38,7 @@ flowchart LR
 
 **Weaknesses:** Unbounded growth pollutes the system prompt. No semantic retrieval. Humans (or agents) must edit by hand. Conflicts are merge conflicts, which is a feature and a chore.
 
-**Use when** the corpus is small and normative: “never force-push main,” “pnpm only.” mem0-lite’s [AGENTS.md pointer](../README.md#thin-agentsmd) is this layer for *when* to recall/capture; Mem0 is for *volume* that should not occupy the prompt.
+**Use when** the corpus is small and normative: “never force-push main,” “pnpm only.” mem0-lite’s [AGENTS.md pointer](../README.md#agentsmd) is this layer for *when* to recall/capture; Mem0 is for *volume* that should not occupy the prompt.
 
 ## 2. Thread / project memory files
 

@@ -36,7 +36,7 @@ Recorded so the next pass does not re-litigate them without new constraints.
 
 ## D5 — When lives in thin AGENTS.md; how lives on the tools
 
-**Choice:** [Thin AGENTS.md](../README.md#thin-agentsmd) for *when* to search/capture. Tool docstrings for *how* (query rewrite, `infer=false`, types). No skill. The server does not refuse “small talk” writes.
+**Choice:** [Thin AGENTS.md](../README.md#agentsmd) for *when* to search/capture. Tool docstrings for *how* (query rewrite, `infer=false`, types). No skill. The server does not refuse “small talk” writes.
 
 **Why:** MCP schemas already load with the tools. A skill that restates them is duplicate context. Tool docs never say “search at task start”; that *when* belongs in standing instructions. A skill is worse at always-on policy (description match / opt-in).
 

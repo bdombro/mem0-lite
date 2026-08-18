@@ -16,18 +16,18 @@ Official Mem0 gives you three things that do not compose for a local MCP setup:
 | `mem0-cli`                   | Client only, does not include server                                             |
 
 
-mem0-lite is like *lite*weight local python application that runs and exposes the OSS mem0 library as an MCP service.
+mem0-lite is a *lite*weight local Python app that exposes the OSS mem0 library as an MCP service.
 
 ## What you get
 
 - **MCP tools** — `add_memory`, `search_memories`, `get_memory_by_id`, `list_memories`, `update_memory`, `delete_memory`, `delete_all_memories` (how to call them is in the tool docs)
-- **Local store** — Qdrant on disk (`on_disk=True`), not `/tmp`, with concurrency support
-- **When to use them** — thin [AGENTS.md pointer](#thin-agentsmd)
+- **Local store** — Qdrant on disk (`on_disk=True`), not `/tmp`, with concurrency coordination
+- **When to use them** — thin [AGENTS.md pointer](#agentsmd)
 - **MCP registration** — [uv launch snippet](#mcp-registration)
 
 ### What it stores
 
-vector db, history, config, `lite.lock`, and `lite.want` in `~/.mem0`
+vector db, history, config, access log, `lite.lock`, and `lite.want` in `~/.mem0`
 
 ## Install
 
@@ -35,7 +35,7 @@ Requires [uv](https://docs.astral.sh/uv/), Python 3.11+, and `OPENAI_API_KEY` (o
 
 1. Clone this repo.
 2. Register the MCP server with your host ([snippet below](#mcp-registration)). Set `OPENAI_API_KEY` in the host config or your environment; do not commit it.
-3. Paste the [AGENTS.md pointer](#thin-agentsmd).
+3. Paste the [AGENTS.md pointer](#agentsmd).
 
 ### Env
 
@@ -51,7 +51,7 @@ The MCP reads these from the process environment. If a variable is set in your s
 - `MEM0_LITE_EMBEDDER_PROVIDER` — e.g. `openai` or `ollama`
 - `MEM0_LITE_EMBEDDER_MODEL` — embedder model (default `nomic-embed-text` with Ollama)
 
-Full defaults: [architecture](docs/architecture.md).
+Full defaults: [architecture](docs/architecture.md). Opt-in rating: [Feedback mode](#feedback-mode) (`MEM0_LITE_FEEDBACK_MODE`, default off).
 
 ### MCP registration
 
@@ -69,7 +69,7 @@ Merge into your MCP host's config. Cursor: `~/.cursor/mcp.json` or project `.cur
 }
 ```
 
-### Thin AGENTS.md
+### AGENTS.md
 
 Paste into `AGENTS.md` (or user rules). How to call tools is in the MCP schemas. This is *when*.
 
@@ -78,6 +78,44 @@ Paste into `AGENTS.md` (or user rules). How to call tools is in the MCP schemas.
 
 MCP `mem0-lite` is registered. Search at task start, context switch, or when the user references past work. After the reply, write only if a new agent would benefit in days/weeks (future utility, novelty, factual, no secrets). Do not announce recall. Prefer `update_memory`. Most turns write nothing.
 ```
+
+## Metrics
+
+Every tool call appends one line to `~/.mem0/access-log.jsonl` (tool, agent, connection reuse, lock wait, duration). Summarize:
+
+```bash
+uv run python scripts/access-report.py
+```
+
+## Feedback mode
+
+Tracks effectiveness of the memory store.
+
+When on, tool responses include a `ts` field, which can be used to rate a response using the `rate_memory_call` tool.
+
+When on (`MEM0_LITE_FEEDBACK_MODE=1`):
+
+- Retrieval responses include `ts`
+- Agents can call `rate_memory_call(call_ts, helpful, reason)` after a useful hit, a miss, or noise
+- Ratings append to `~/.mem0/feedback.jsonl`
+- `scripts/access-report.py` joins ratings to access-log `ts` and reports coverage, helpful rate, and feedback latency (`ts − call_ts`)
+
+Enable in the MCP host `env` block (do not put this in the default registration snippet):
+
+```json
+"env": {
+  "OPENAI_API_KEY": "sk-...",
+  "MEM0_LITE_FEEDBACK_MODE": "1"
+}
+```
+
+If you enable it, add this to AGENTS.md.
+
+```md
+After a retrieval call, if you used a hit, clearly missed a fact, or got noise, call rate_memory_call with that response's ts.
+```
+
+`reason` is one of: `used` | `empty_ok` | `miss` | `noise` | `stale` | `bad_query`. Skip empty-and-expected results.
 
 ## Docs
 
