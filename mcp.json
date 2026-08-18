@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mem0-lite": {
+      "command": "uv",
+      "args": ["run", "--directory", "/Users/briandombrowski/dev/bdombro/mem0-lite/mcp", "mem0-lite-mcp"],
+      "env": { "OPENAI_API_KEY": "sk-..." }
+    }
+  }
+}

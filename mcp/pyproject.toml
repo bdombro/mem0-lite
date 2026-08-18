@@ -1,0 +1,16 @@
+[project]
+name = "mem0-lite-mcp"
+version = "0.1.0"
+description = "stdio MCP server wrapping mem0ai OSS Memory() for Cursor and other MCP clients"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp[cli]>=1.9,<2",
+    "mem0ai>=1.0",
+]
+
+[project.scripts]
+mem0-lite-mcp = "mem0_lite_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
