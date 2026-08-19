@@ -64,7 +64,8 @@ mem0-lite/
 │   ├── mcp.py            # FastMCP tools
 │   ├── scope.py          # project/workstream/scope helpers
 │   ├── context.py        # plugin probe/stamp/recall glue
-│   ├── cli.py            # mem0-lite mcp
+│   ├── cli.py            # mem0-lite mcp | log
+│   ├── logs.py           # JSONL query (report / getByTs / getColumn)
 │   └── plugins/          # ContextPlugin protocol, loader, runner
 ├── pyproject.toml        # uv project
 └── docs/
@@ -75,13 +76,14 @@ mem0-lite/
 | Piece | Default | Override |
 |---|---|---|
 | Transport | stdio | none (primary path) |
-| Data dir | `~/.mem0/` — `qdrant/`, `history.db`, `config.json`, `lite.lock`, `lite.want`, `access-log.jsonl`, `feedback.jsonl` | `MEM0_DIR` |
+| Data dir | `~/.mem0/` — `qdrant/`, `history.db`, `config.json`, `lite.lock`, `lite.want`, `access-log.jsonl`, `feedback.jsonl`, `debug.jsonl` (opt-in) | `MEM0_DIR` |
 | Store lock | holder keeps Qdrant + `lite.lock`; waiter writes `lite.want` then blocks | `MEM0_LITE_LOCK_TIMEOUT` (seconds, default 30) |
 | LLM | OpenAI `gpt-5-mini` via mem0ai defaults | `MEM0_LITE_LLM_PROVIDER` / `MEM0_LITE_LLM_MODEL` |
 | Embedder | OpenAI `text-embedding-3-small` | `MEM0_LITE_EMBEDDER_PROVIDER` / `MEM0_LITE_EMBEDDER_MODEL` |
 | User scope | `$MEM0_LITE_USER_ID` or `$USER` | tool arg `user_id` |
 | Agent scope | `$MEM0_LITE_AGENT_ID` if set | tool arg `agent_id` |
 | Feedback mode | off (no `ts` on responses) | `MEM0_LITE_FEEDBACK_MODE=1` adds `ts` for `rate_memory_call` |
+| Debug log | off (no `debug.jsonl`) | `MEM0_LITE_DEBUG=1` — [debug log](debug.md) |
 | Plugins | `$MEM0_DIR/plugins/<name>/` (default `~/.mem0/plugins/`) when present | `MEM0_LITE_PLUGINS_DISABLE`; `just setup` symlinks repo `plugins/` |
 | Git confinement | cwd must sit in its toplevel; `/` refused | `MEM0_LITE_GIT_ROOTS` (pathsep) |
 | Git fetch / gh / promote | off | `MEM0_LITE_GIT_FETCH`, `MEM0_LITE_GIT_GH`, `MEM0_LITE_GIT_PROMOTE` |

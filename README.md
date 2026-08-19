@@ -97,18 +97,24 @@ Paste into `AGENTS.md` (or user rules). How to call tools is in the MCP schemas.
 ```md
 ## Memory
 
-MCP `mem0-lite` is registered. Search at task start, context switch, or when the user references past work. Pass `cwd` when in a checkout (or `project` / `workstream` if already known). After the reply, write only if a new agent would benefit in days/weeks (future utility, novelty, factual, no secrets). Do not announce recall, misses, or “memories didn’t help” — just continue. Prefer `update_memory`. Most turns write nothing.
+MCP `mem0-lite` is registered. Search at task start, context switch, or when the user references past work. Pass `cwd` when in a checkout (or `project` / `workstream` if already known). Include `memory_type: environmental` when the work will run local tools. After the reply, write only if a new agent would benefit in days/weeks (future utility, novelty, factual, no secrets). Do not announce recall, misses, or “memories didn’t help” — just continue. Prefer `update_memory`. Most turns write nothing. After a missing binary, wrong version, or version-manager PATH hole, write one standing `environmental` fact (how to invoke the tool, not a shell dump). Pass `cwd` so it stamps this repo.
 ```
 
 
 
 ## Metrics
 
-Every tool call appends one line to `~/.mem0/access-log.jsonl` (tool, agent, connection reuse, lock wait, duration). Summarize:
+Every tool call appends one line to `~/.mem0/access-log.jsonl` (tool, agent, connection reuse, lock wait, duration, `store_count`). Search and list also stamp `scope_count` (memories matching that call's filters). Query logs without opening Qdrant:
 
 ```bash
-uv run python scripts/access-report.py
+uv run mem0-lite log report                 # access + feedback summary (JSON)
+uv run mem0-lite log getByTs <ts>           # access + feedback + debug rows for one ts
+uv run mem0-lite log getColumn <column>     # CSV of one field across all logs
 ```
+
+`getByTs` follows `ts` / `call_ts` links, so a feedback rating timestamp still returns the original tool call. `getColumn` takes a top-level key or dotted path (`tool`, `params.query`, `request.filters.project`) and walks access, then feedback, then debug.
+
+The report includes last/min/max `store_count` and feedback sliced by size at call time (`0`, `1-10`, `11-50`, `51+`). Early `empty_ok` / `miss` at bucket `0` is expected; watch `used` vs `noise` as the corpus grows.
 
 
 
@@ -123,7 +129,7 @@ When on (`MEM0_LITE_FEEDBACK_MODE=1`):
 - Retrieval responses include `ts`
 - Agents can call `rate_memory_call(call_ts, helpful, reason)` after a useful hit, a miss, or noise
 - Ratings append to `~/.mem0/feedback.jsonl`
-- `scripts/access-report.py` joins ratings to access-log `ts` and reports coverage, helpful rate, and feedback latency (`ts − call_ts`)
+- `mem0-lite log report` joins ratings to access-log `ts` and reports coverage, helpful rate, feedback latency (`ts − call_ts`), and helpful/reason rates by store size at the call
 
 Enable in the MCP host `env` block (do not put this in the default registration snippet):
 
@@ -151,6 +157,7 @@ After a retrieval call, if you used a hit, clearly missed a fact, or got noise, 
 | [Alternative storage](docs/alternative-memory-storage.md)                | Files, SQLite, vector DBs, hosted memory               |
 | [Decisions](docs/decisions.md)                                           | Why MCP, why `infer=false`, why not REST, D11 git, D12 plugins |
 | [Footguns](docs/footguns.md)                                             | Keys in git, `/tmp` Qdrant, CLI-as-tool, query rewrite, plugins |
+| [Debug log](docs/debug.md)                                               | `MEM0_LITE_DEBUG`, `debug.jsonl`                       |
 
 
 

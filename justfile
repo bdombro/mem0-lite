@@ -36,7 +36,7 @@ test *args:
 
 # Access-log summary under MEM0_DIR / ~/.mem0
 report:
-    uv run python scripts/access-report.py
+    uv run mem0-lite log report
 
 # Wipe local store (~/.mem0 or $MEM0_DIR). Stop MCP hosts first. Confirms.
 [confirm("Stop MCP hosts first. Delete ~/.mem0 (or $MEM0_DIR)?")]

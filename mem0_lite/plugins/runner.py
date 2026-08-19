@@ -9,6 +9,7 @@ from typing import Any
 
 from mem0_lite.access_log import log_tool_call
 from mem0_lite.core import StoreBusy, memory_session
+from mem0_lite.debug_log import log_debug_call
 from mem0_lite.plugins.base import ContextPlugin, PromoteOp, Snapshot
 
 log = logging.getLogger("mem0_lite.plugins")
@@ -95,17 +96,25 @@ def _run_one(
             write_error = type(exc).__name__
             log.exception("reconcile write failed for plugin %s", plugin.name)
 
+    params = {
+        "plugin": plugin.name,
+        "ids": applied,
+        "error": load_error or recon_error or write_error,
+    }
     log_tool_call(
         tool="plugin_reconcile",
         agent_id=agent_id,
         metrics=None,
         duration_ms=0.0,
         timestamp=started,
-        params={
-            "plugin": plugin.name,
-            "ids": applied,
-            "error": load_error or recon_error or write_error,
-        },
+        params=params,
+    )
+    log_debug_call(
+        ts=started.isoformat(),
+        tool="plugin_reconcile",
+        agent_id=agent_id,
+        request=params,
+        response={"ids": applied, "error": load_error or recon_error or write_error},
     )
 
 

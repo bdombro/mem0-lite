@@ -39,10 +39,12 @@ _WANT_REFRESH_S = 0.1
 
 @dataclass
 class SessionMetrics:
-    """Store open/reuse and lite.lock wait for the last memory_session()."""
+    """Store open/reuse, lite.lock wait, and collection counts for the last memory_session()."""
 
     reused_connection: bool = False
     lock_wait_ms: float = 0.0
+    store_count: int | None = None
+    scope_count: int | None = None
 
 
 # Metrics from the most recent memory_session() in this process.
@@ -52,6 +54,59 @@ _session_metrics: SessionMetrics | None = None
 def last_session_metrics() -> SessionMetrics | None:
     """Metrics from the last memory_session(); None if that call did not open the store."""
     return _session_metrics
+
+
+def _int_or_none(value: Any) -> int | None:
+    """Coerce Qdrant count fields to int; None if missing or invalid."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _collection_count(memory: Any) -> int | None:
+    """Global Qdrant points_count. None when the client has no collection info."""
+    store = getattr(memory, "vector_store", None)
+    col_info = getattr(store, "col_info", None)
+    if col_info is None:
+        return None
+    try:
+        info = col_info()
+    except Exception:
+        return None
+    n = getattr(info, "points_count", None)
+    if n is None and isinstance(info, dict):
+        n = info.get("points_count")
+    return _int_or_none(n)
+
+
+def _filtered_count(memory: Any, filters: dict[str, Any]) -> int | None:
+    """Exact Qdrant count for mem0 filters. None if the store cannot count."""
+    store = getattr(memory, "vector_store", None)
+    client = getattr(store, "client", None)
+    name = getattr(store, "collection_name", None)
+    create_filter = getattr(store, "_create_filter", None)
+    if client is None or not name or create_filter is None:
+        return None
+    try:
+        result = client.count(
+            collection_name=name,
+            count_filter=create_filter(filters),
+            exact=True,
+        )
+    except Exception:
+        return None
+    return _int_or_none(getattr(result, "count", None))
+
+
+def record_scope_count(memory: Any, filters: dict[str, Any] | None) -> None:
+    """Stamp in-scope count on the live session metrics. Call inside memory_session()."""
+    metrics = _session_metrics
+    if metrics is None or not filters:
+        return
+    metrics.scope_count = _filtered_count(memory, filters)
 
 
 def clear_session_metrics() -> None:
@@ -100,6 +155,11 @@ def env_flag(name: str) -> bool:
 def feedback_mode() -> bool:
     """True when MEM0_LITE_FEEDBACK_MODE adds ts to tool responses for agent rating."""
     return env_flag("MEM0_LITE_FEEDBACK_MODE")
+
+
+def debug_mode() -> bool:
+    """True when MEM0_LITE_DEBUG writes request/response to debug.jsonl."""
+    return env_flag("MEM0_LITE_DEBUG")
 
 
 def _lock_timeout() -> float:
@@ -388,10 +448,13 @@ def memory_session() -> Iterator[Memory]:
             metrics.reused_connection = True
         gen = _generation
         _in_use += 1
+        _session_metrics = metrics
         try:
             assert _memory is not None
             yield _memory
         finally:
+            if _memory is not None:
+                metrics.store_count = _collection_count(_memory)
             _in_use -= 1
             if _in_use == 0 and _generation == gen:
                 _maybe_yield_locked()

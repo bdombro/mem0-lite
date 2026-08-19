@@ -48,6 +48,11 @@ def log_tool_call(
     }
     if params:
         entry["params"] = params
+    if metrics is not None:
+        if metrics.store_count is not None:
+            entry["store_count"] = metrics.store_count
+        if metrics.scope_count is not None:
+            entry["scope_count"] = metrics.scope_count
 
     line = json.dumps(entry, separators=(",", ":"))
     path = access_log_path()

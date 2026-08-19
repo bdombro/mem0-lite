@@ -42,6 +42,8 @@ def mem0_home(tmp_path, monkeypatch):
         "MEM0_LITE_GIT_FETCH",
         "MEM0_LITE_GIT_GH",
         "MEM0_LITE_GIT_PROMOTE",
+        "MEM0_LITE_DEBUG",
+        "MEM0_LITE_FEEDBACK_MODE",
     ):
         monkeypatch.delenv(key, raising=False)
     reset_plugins()

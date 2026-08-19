@@ -8,6 +8,12 @@ The [README template](../README.md#mcp-registration) contains `"OPENAI_API_KEY":
 
 Prefer `env` that inherits from the shell the host was launched from, or a local untracked override. Never commit a live key.
 
+## `MEM0_LITE_DEBUG=1` writes memory text to disk
+
+The [debug log](debug.md) records the effective tool call, including `add_memory` text and retrieved facts. Treat `debug.jsonl` as a secrets dump: local, wipeable, not in the default MCP snippet. Do not copy it into a ticket or commit.
+
+Access metrics stay in `access-log.jsonl` (no bodies). Debug does not write to stdout/stderr — stdio is the MCP protocol.
+
 ## `MEM0_BASE_URL=http://localhost:8888` with `mem0-cli`
 
 The env var exists. It retargets the **Platform** HTTP client. OSS REST is `POST /memories` + `X-API-Key`. The CLI calls `POST /v3/memories/add/` + `Authorization: Token`. You get 404s and auth failures, not local OSS.
@@ -31,7 +37,7 @@ That re-imports `mem0ai`, reopens Qdrant, and often re-inits embeddings on every
 
 Upstream `Memory()` defaults there. `/tmp` is wiped on reboot on many Macs. This wrapper sets `~/.mem0/qdrant` with `on_disk=True`. If you construct `Memory()` yourself in a scratch script, you will not get that path.
 
-Everything lives under `~/.mem0/` (`qdrant/`, `history.db`, `config.json`, `lite.lock`, `lite.want`). Back up that directory if you care. If you had data in the old `~/.mem0-lite/` path, move `qdrant/` into `~/.mem0/`.
+Everything lives under `~/.mem0/` (`qdrant/`, `history.db`, `config.json`, `lite.lock`, `lite.want`, `access-log.jsonl`, `feedback.jsonl`, `debug.jsonl` when enabled). Back up that directory if you care. If you had data in the old `~/.mem0-lite/` path, move `qdrant/` into `~/.mem0/`.
 
 ## Two MCP processes, same `MEM0_DIR`
 
